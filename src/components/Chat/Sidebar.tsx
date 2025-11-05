@@ -2,7 +2,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { FaSearch, FaUsers, FaCheck } from 'react-icons/fa';
-import type { User } from '../../types';
+import type { User, Message } from '../../types';
 
 interface SidebarProps {
     users: User[];
@@ -30,8 +30,14 @@ export default function Sidebar({
                 )
                 .filter((u: User) =>
                     u.username.toLowerCase().includes(searchTerm.toLowerCase())
-                ),
-        [users, meId, meUsername, searchTerm, ]
+                )
+                .sort((a, b) => {
+                    // Sort by last message timestamp (most recent first)
+                    const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+                    const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+                    return bTime - aTime;
+                }),
+        [users, meId, meUsername, searchTerm]
     );
 
     return (
@@ -110,17 +116,39 @@ export default function Sidebar({
                                     ></span>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="font-semibold text-gray-900 truncate">
-                                        {u.username}
+                                    <div className="flex items-center justify-between">
+                                        <div className="font-semibold text-gray-900 truncate">
+                                            {u.username}
+                                        </div>
+                                        {u.unreadCount && u.unreadCount > 0 && (
+                                            <div className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-5 text-center">
+                                                {u.unreadCount > 99 ? '99+' : u.unreadCount}
+                                            </div>
+                                        )}
                                     </div>
-                                    <div
-                                        className={`text-xs flex items-center gap-1 ${u.online ? 'text-green-600' : 'text-gray-500'}`}
-                                    >
+                                    <div className="flex items-center justify-between">
                                         <div
-                                            className={`w-1.5 h-1.5 rounded-full ${u.online ? 'bg-green-500' : 'bg-gray-400'}`}
-                                        ></div>
-                                        {u.online ? 'Online' : 'Offline'}
+                                            className={`text-xs flex items-center gap-1 ${u.online ? 'text-green-600' : 'text-gray-500'}`}
+                                        >
+                                            <div
+                                                className={`w-1.5 h-1.5 rounded-full ${u.online ? 'bg-green-500' : 'bg-gray-400'}`}
+                                            ></div>
+                                            {u.online ? 'Online' : 'Offline'}
+                                        </div>
+                                        {u.lastMessage && (
+                                            <div className="text-xs text-gray-500">
+                                                {new Date(u.lastMessage.createdAt).toLocaleTimeString([], {
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
+                                    {u.lastMessage && (
+                                        <div className="text-xs text-gray-600 truncate mt-1">
+                                            {u.lastMessage.text || (u.lastMessage.type === 'file' ? '📎 File' : 'Media')}
+                                        </div>
+                                    )}
                                 </div>
                                 {activeUser?._id === u._id && (
                                     <FaCheck className="w-5 h-5 text-blue-500" />

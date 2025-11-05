@@ -59,6 +59,16 @@ export default function ChatWindow({
     const [searchInput, setSearchInput] = useState('');
     const [showSearch, setShowSearch] = useState(false);
 
+    // Get last login time to distinguish new messages
+    const lastLoginTime = React.useMemo(() => {
+        try {
+            const stored = localStorage.getItem('lastLoginTime');
+            return stored ? new Date(stored) : null;
+        } catch {
+            return null;
+        }
+    }, []);
+
     // auto-scroll
     useEffect(() => {
         scrollRef.current?.scrollTo({
@@ -258,7 +268,7 @@ export default function ChatWindow({
                     })
                     .map((m, idx) => {
                         const isMine = (typeof m.from === 'string' ? m.from : m.from._id) === myId;
-                        // Use populated data from message for sender info
+                        // Use populated data from message for sender info (backend populates from/to fields)
                         const senderData = typeof m.from === 'object' ? m.from : null;
                         const senderFromUsers = users.find(
                             (u) =>
@@ -276,10 +286,15 @@ export default function ChatWindow({
                             senderFromUsers?.username ||
                             'Unknown';
                         const isOnline = senderFromUsers?.online || false;
+
+                        // Check if message is new (received after last login)
+                        const messageTime = new Date(m.createdAt);
+                        const isNewMessage = lastLoginTime && messageTime > lastLoginTime && !isMine;
+
                         return (
                             <div
                                 key={String(m._id) + idx}
-                                className={`flex items-end gap-3 mb-6 ${isMine ? 'justify-end' : 'justify-start'}`}
+                                className={`flex items-end gap-3 mb-6 ${isMine ? 'justify-end' : 'justify-start'} ${isNewMessage ? 'bg-blue-50/50 p-2 rounded-lg' : ''}`}
                             >
                                 {!isMine && (
                                     <div className="relative">
@@ -302,6 +317,8 @@ export default function ChatWindow({
                                     className={`max-w-xs lg:max-w-md rounded-2xl px-4 py-2 relative group ${
                                         isMine
                                             ? 'bg-blue-600 text-white'
+                                            : isNewMessage
+                                            ? 'bg-blue-100 text-gray-900 border border-blue-200'
                                             : 'bg-gray-100 text-gray-900'
                                     }`}
                                 >
@@ -431,6 +448,8 @@ export default function ChatWindow({
                                             className={
                                                 isMine
                                                     ? 'text-blue-200'
+                                                    : isNewMessage
+                                                    ? 'text-blue-600 font-medium'
                                                     : 'text-gray-400'
                                             }
                                         >
@@ -440,6 +459,7 @@ export default function ChatWindow({
                                                 hour: '2-digit',
                                                 minute: '2-digit',
                                             })}
+                                            {isNewMessage && <span className="ml-1 text-blue-500">●</span>}
                                         </span>
                                         {isMine && (
                                             <button

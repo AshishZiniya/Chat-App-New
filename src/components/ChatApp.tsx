@@ -35,12 +35,14 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
         isSearching: false,
     });
 
+
     // Load persisted data from localStorage on mount
     useEffect(() => {
         const loadPersistedData = () => {
             try {
                 const savedActiveUser = localStorage.getItem(LocalStorageKeys.ACTIVE_USER);
                 const savedMessages = localStorage.getItem(LocalStorageKeys.CHAT_MESSAGES);
+                const lastLoginTime = localStorage.getItem('lastLoginTime');
 
                 if (savedActiveUser) {
                     const user = JSON.parse(savedActiveUser);
@@ -51,11 +53,16 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
                     const messages = JSON.parse(savedMessages);
                     setChatState((prev) => ({ ...prev, messages }));
                 }
+
+                // Store current login time for distinguishing new messages
+                const currentTime = new Date().toISOString();
+                localStorage.setItem('lastLoginTime', currentTime);
             } catch (error) {
                 console.error('Error loading persisted data:', error);
                 // Clear corrupted data
                 localStorage.removeItem(LocalStorageKeys.ACTIVE_USER);
                 localStorage.removeItem(LocalStorageKeys.CHAT_MESSAGES);
+                localStorage.removeItem('lastLoginTime');
             }
         };
 
@@ -75,6 +82,28 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
     }, [token]);
     const me = decoded?.username ?? '';
     const myId = decoded?.sub ?? '';
+
+    // Compute last message for each user
+    const usersWithLastMessage = React.useMemo(() => {
+        const lastMessages: Record<string, Message> = {};
+        chatState.messages.forEach((msg) => {
+            const otherUserId = (typeof msg.from === 'string' ? msg.from : msg.from._id) === myId
+                ? (typeof msg.to === 'string' ? msg.to : msg.to._id)
+                : (typeof msg.from === 'string' ? msg.from : msg.from._id);
+            if (!lastMessages[otherUserId] || new Date(msg.createdAt) > new Date(lastMessages[otherUserId].createdAt)) {
+                lastMessages[otherUserId] = msg;
+            }
+        });
+
+        return chatState.users.map((user) => ({
+            ...user,
+            lastMessage: lastMessages[user._id],
+            unreadCount: chatState.messages.filter((msg) => {
+                const fromId = typeof msg.from === 'string' ? msg.from : msg.from._id;
+                return fromId === user._id && !msg.seen && (typeof msg.to === 'string' ? msg.to : msg.to._id) === myId;
+            }).length,
+        }));
+    }, [chatState.users, chatState.messages, myId]);
 
     useEffect(() => {
         if (!token || token.trim() === '') {
@@ -160,7 +189,20 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
                     return prev;
                 }
 
-                const newMessages = [...prev.messages, m];
+                // Ensure consistent message structure - backend sends populated objects
+                const messageToAdd: Message = {
+                    ...m,
+                    from: typeof m.from === 'string' ? m.from : m.from._id,
+                    to: typeof m.to === 'string' ? m.to : m.to._id,
+                };
+
+                // Mark message as seen if it's from the currently active user
+                const fromId = typeof m.from === 'string' ? m.from : m.from._id;
+                if (prev.activeUser && fromId === prev.activeUser._id) {
+                    messageToAdd.seen = true;
+                }
+
+                const newMessages = [...prev.messages, messageToAdd];
                 localStorage.setItem(LocalStorageKeys.CHAT_MESSAGES, JSON.stringify(newMessages));
                 return { ...prev, messages: newMessages };
             });
@@ -171,7 +213,13 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
             setChatState((prev) => {
                 // Merge with existing messages to avoid duplicates
                 const existingIds = new Set(prev.messages.map(m => String(m._id)));
-                const newMessages = conv.filter(m => !existingIds.has(String(m._id)));
+                const newMessages = conv
+                    .filter(m => !existingIds.has(String(m._id)))
+                    .map(m => ({
+                        ...m,
+                        from: typeof m.from === 'string' ? m.from : m.from._id,
+                        to: typeof m.to === 'string' ? m.to : m.to._id,
+                    }));
                 const allMessages = [...prev.messages, ...newMessages];
                 localStorage.setItem(LocalStorageKeys.CHAT_MESSAGES, JSON.stringify(allMessages));
                 return { ...prev, messages: allMessages };
@@ -183,7 +231,13 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
             setChatState((prev) => {
                 // Filter out duplicates
                 const existingIds = new Set(prev.messages.map(m => String(m._id)));
-                const newPendingMessages = pending.filter(m => !existingIds.has(String(m._id)));
+                const newPendingMessages = pending
+                    .filter(m => !existingIds.has(String(m._id)))
+                    .map(m => ({
+                        ...m,
+                        from: typeof m.from === 'string' ? m.from : m.from._id,
+                        to: typeof m.to === 'string' ? m.to : m.to._id,
+                    }));
                 const allMessages = [...prev.messages, ...newPendingMessages];
                 localStorage.setItem(LocalStorageKeys.CHAT_MESSAGES, JSON.stringify(allMessages));
                 return { ...prev, messages: allMessages };
@@ -273,6 +327,30 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
         // Persist active user to localStorage
         localStorage.setItem(LocalStorageKeys.ACTIVE_USER, JSON.stringify(user));
 
+        // Mark messages as seen when selecting user
+        setChatState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((msg) => {
+                const fromId = typeof msg.from === 'string' ? msg.from : msg.from._id;
+                const toId = typeof msg.to === 'string' ? msg.to : msg.to._id;
+                if (fromId === user._id && toId === myId && !msg.seen) {
+                    return { ...msg, seen: true };
+                }
+                return msg;
+            }),
+        }));
+
+        // Update localStorage with seen messages
+        const updatedMessages = chatState.messages.map((msg) => {
+            const fromId = typeof msg.from === 'string' ? msg.from : msg.from._id;
+            const toId = typeof msg.to === 'string' ? msg.to : msg.to._id;
+            if (fromId === user._id && toId === myId && !msg.seen) {
+                return { ...msg, seen: true };
+            }
+            return msg;
+        });
+        localStorage.setItem(LocalStorageKeys.CHAT_MESSAGES, JSON.stringify(updatedMessages));
+
         // Always try to request conversation from database, regardless of online status
         // The backend will handle loading historical messages
         if (socketRef.current?.connected) {
@@ -281,7 +359,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
             // If socket not connected, try to load via HTTP API as fallback
             loadConversationViaHttp(user._id);
         }
-    }, []);
+    }, [myId]);
 
     const loadConversationViaHttp = useCallback(async (userId: string) => {
         try {
@@ -304,7 +382,13 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
             setChatState((prev) => {
                 // Merge with existing messages to avoid duplicates
                 const existingIds = new Set(prev.messages.map(m => String(m._id)));
-                const newMessages = messages.filter((m: Message) => !existingIds.has(String(m._id)));
+                const newMessages = messages
+                    .filter((m: Message) => !existingIds.has(String(m._id)))
+                    .map((m: Message) => ({
+                        ...m,
+                        from: typeof m.from === 'string' ? m.from : m.from._id,
+                        to: typeof m.to === 'string' ? m.to : m.to._id,
+                    }));
                 const allMessages = [...prev.messages, ...newMessages];
                 localStorage.setItem(LocalStorageKeys.CHAT_MESSAGES, JSON.stringify(allMessages));
                 return {
@@ -333,6 +417,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
         localStorage.removeItem(LocalStorageKeys.CHAT_MESSAGES);
         localStorage.removeItem('next-auth.session-token');
         localStorage.removeItem('next-auth.callback-url');
+        // Don't clear lastLoginTime on logout, keep it for next login
 
         // Sign out from NextAuth
         await fetch('/api/auth/signout', {
@@ -522,7 +607,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
         <div className="flex-1 flex flex-col lg:flex-row bg-transparent relative h-[calc(90vh-4px)] ">
             <div className="chat-sidebar">
                 <Sidebar
-                    users={chatState.users}
+                    users={usersWithLastMessage}
                     meUsername={me}
                     meId={myId}
                     onSelect={selectUser}
@@ -540,7 +625,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
                     typingFrom={chatState.typingUsers[0] || null}
                     onDelete={handleDelete}
                     onFileUpload={handleFileUpload}
-                    users={chatState.users}
+                    users={usersWithLastMessage}
                     onLoadMore={loadMoreMessages}
                     isLoadingMore={chatState.isLoadingMore}
                     hasMoreMessages={chatState.hasMoreMessages}
