@@ -335,14 +335,8 @@ export class ChatSocketClient implements SocketClient {
     this.emit(SocketEvents.DELETE_MESSAGE, data);
   }
 
-  // User status methods
-  userOnline(): void {
-    this.emit('userOnline', { userId: this.userId });
-  }
-
-  userOffline(): void {
-    this.emit('userOffline', { userId: this.userId });
-  }
+  // User status methods - now handled automatically by backend
+  // Keeping for backward compatibility but not used anymore
 
   // Listen for user status updates
   onUserStatusUpdate(callback: (data: { userId: string; online: boolean }) => void): void {

@@ -118,32 +118,23 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
         // Set up periodic heartbeat to maintain online status
         const heartbeatInterval = setInterval(() => {
             if (s.connected) {
-                console.log('Sending heartbeat to maintain online status');
+                // Only send heartbeat if we have an active connection
                 s.emit('user:heartbeat', { userId: myId });
             }
-        }, 30000); // Send heartbeat every 30 seconds
+        }, 25000); // Send heartbeat every 25 seconds (slightly less than server ping timeout)
 
         // WebSocket event handlers
         const handleConnect = () => {
             console.log('Socket connected successfully');
             setChatState((prev) => ({ ...prev, isConnected: true, error: null }));
-            // Emit user online status
-            s.userOnline();
+            // Don't manually emit userOnline - backend handles this automatically on connect
         };
 
         const handleReconnect = (data: unknown) => {
             const attemptNumber = data as number;
             console.log('Socket reconnected after', attemptNumber, 'attempts');
             setChatState((prev) => ({ ...prev, isConnected: true, error: null }));
-            // Emit user online status after reconnection
-            s.userOnline();
-            // Refresh user list after reconnection
-            setTimeout(() => {
-                if (s.connected) {
-                    // The users:updated event will be triggered automatically when user comes online
-                    // But we can also request a fresh list if needed
-                }
-            }, 1000);
+            // Don't manually emit userOnline - backend handles this automatically on reconnect
         };
 
         const handleDisconnect = () => {
@@ -295,7 +286,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
                 console.warn('Invalid user status data received:', statusData);
                 return;
             }
-            console.log('User status updated:', statusData);
+            console.log('User status updated:', statusData.userId, 'online:', statusData.online);
             setChatState((prev) => ({
                 ...prev,
                 users: prev.users.map((user) =>
@@ -407,10 +398,7 @@ export default function ChatApp({ token, onLogout }: ChatAppProps) {
     }, [myId, token]);
 
     const handleLogout = useCallback(async () => {
-        // Emit user offline status before disconnecting
-        if (socketRef.current?.connected) {
-            socketRef.current.userOffline();
-        }
+        // Don't manually emit userOffline - backend handles this automatically on disconnect
 
         // Clear localStorage
         localStorage.removeItem(LocalStorageKeys.ACTIVE_USER);
