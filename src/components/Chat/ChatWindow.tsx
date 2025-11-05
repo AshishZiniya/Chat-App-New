@@ -251,8 +251,13 @@ export default function ChatWindow({
                         (m) =>
                             m.from === activeUser._id || m.to === activeUser._id
                     )
+                    .filter((m) => {
+                        const fromId = typeof m.from === 'string' ? m.from : m.from._id;
+                        const toId = typeof m.to === 'string' ? m.to : m.to._id;
+                        return fromId === activeUser._id || toId === activeUser._id;
+                    })
                     .map((m, idx) => {
-                        const isMine = m.from === myId;
+                        const isMine = (typeof m.from === 'string' ? m.from : m.from._id) === myId;
                         // Use populated data from message for sender info
                         const senderData = typeof m.from === 'object' ? m.from : null;
                         const senderFromUsers = users.find(
