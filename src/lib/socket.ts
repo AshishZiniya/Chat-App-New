@@ -29,18 +29,14 @@ export class ChatSocketClient implements SocketClient {
     if (!userId || userId.trim() === '') {
       console.warn('Socket client initialized without userId');
     }
+
+    // Initialize socket immediately
+    this.initializeSocket();
   }
 
-  connect(): void {
-    if (this.socket?.connected) return;
-
-    if (!this.token || this.token.trim() === '') {
-      console.error('Cannot connect socket: No token provided');
-      return;
-    }
-
+  private initializeSocket(): void {
     this.socket = io(this.apiUrl, {
-      auth: { token: `Bearer ${this.token}` },
+      auth: { token: this.token },
       transports: ['websocket', 'polling'],
       timeout: 5000,
       reconnection: true,
@@ -50,6 +46,7 @@ export class ChatSocketClient implements SocketClient {
       upgrade: true,
     });
 
+    // Add connection event listeners immediately
     this.socket.on('connect', () => {
       this.connected = true;
       console.log('Socket connected:', this.socket?.id);
@@ -63,7 +60,6 @@ export class ChatSocketClient implements SocketClient {
     this.socket.on('connect_error', (error: any) => {
       console.error('Socket connection error:', error);
       this.connected = false;
-      // Log additional error details for debugging
       if (error.description) {
         console.error('Connection error description:', error.description);
       }
@@ -85,6 +81,101 @@ export class ChatSocketClient implements SocketClient {
       console.error('Socket reconnection failed');
       this.connected = false;
     });
+  }
+
+  connect(): void {
+    if (this.socket?.connected) return;
+
+    if (!this.token || this.token.trim() === '') {
+      console.error('Cannot connect socket: No token provided');
+      return;
+    }
+
+    this.socket = io(this.apiUrl, {
+      auth: { token: this.token },
+      transports: ['websocket', 'polling'],
+      timeout: 5000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      forceNew: false,
+      upgrade: true,
+    });
+
+    // Add connection event listeners immediately after socket creation
+    this.socket.on('connect', () => {
+      this.connected = true;
+      console.log('Socket connected:', this.socket?.id);
+    });
+
+    this.socket.on('disconnect', () => {
+      this.connected = false;
+      console.log('Socket disconnected');
+    });
+
+    this.socket.on('connect_error', (error: any) => {
+      console.error('Socket connection error:', error);
+      this.connected = false;
+      if (error.description) {
+        console.error('Connection error description:', error.description);
+      }
+      if (error.context) {
+        console.error('Connection error context:', error.context);
+      }
+    });
+
+    this.socket.on('reconnect', (attemptNumber: number) => {
+      console.log('Socket reconnected after', attemptNumber, 'attempts');
+      this.connected = true;
+    });
+
+    this.socket.on('reconnect_error', (error: any) => {
+      console.error('Socket reconnection error:', error);
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('Socket reconnection failed');
+      this.connected = false;
+    });
+
+    // Add connection event listeners immediately after socket creation
+    this.socket.on('connect', () => {
+      this.connected = true;
+      console.log('Socket connected:', this.socket?.id);
+    });
+
+    this.socket.on('disconnect', () => {
+      this.connected = false;
+      console.log('Socket disconnected');
+    });
+
+    this.socket.on('connect_error', (error: any) => {
+      console.error('Socket connection error:', error);
+      this.connected = false;
+      if (error.description) {
+        console.error('Connection error description:', error.description);
+      }
+      if (error.context) {
+        console.error('Connection error context:', error.context);
+      }
+    });
+
+    this.socket.on('reconnect', (attemptNumber: number) => {
+      console.log('Socket reconnected after', attemptNumber, 'attempts');
+      this.connected = true;
+    });
+
+    this.socket.on('reconnect_error', (error: any) => {
+      console.error('Socket reconnection error:', error);
+    });
+
+    this.socket.on('reconnect_failed', () => {
+      console.error('Socket reconnection failed');
+      this.connected = false;
+    });
+
+    // Add connection event listeners immediately after socket creation
+
   }
 
   disconnect(): void {
